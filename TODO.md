@@ -73,3 +73,7 @@ to date at the end of every milestone.
 - **Mutants** (`scripts/mutants.json`): every one killed. The pause check at
   enqueue (`send`) has no mutant: the same check runs in `pump` before every
   request (an equivalent mutant), kept for an immediate answer.
+
+## Next patch
+
+- Review minors: see `_lots/lot25/reviews/synology-chat-r2.md` (m7 test du bouton sans attente du statut, m8 pause posée sur la nouvelle cible par une réponse de l ancienne).
