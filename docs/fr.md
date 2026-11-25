@@ -31,7 +31,9 @@ Règles d'envoi :
   pu partir dans les 15 secondes est abandonné (« Rien envoyé »).
 - Si le NAS répond HTTP 429 ou 5xx, plus aucun message n'est envoyé pendant 1 minute, puis 2, 4… jusqu'à 1 heure
   si cela se répète (plus longtemps si le NAS le demande par `Retry-After`, 6 heures au plus). Cette pause est
-  gardée dans `/data` et survit à un redémarrage. Un message accepté la remet à zéro.
+  gardée dans `/data` et survit à un redémarrage ; le bouton de test l'attend aussi. Un message accepté la remet à
+  zéro, et une nouvelle URL ou une nouvelle empreinte la lève (elle concernait l'ancienne cible). Après un 5xx, la
+  publication n'est pas confirmée : un proxy (502, 504) peut répondre ainsi après que le message a été publié.
 - L'intégration n'envoie jamais un message deux fois. Si le NAS ne répond pas après avoir reçu la requête,
   l'action de scène échoue avec « Message envoyé, sans confirmation » : regardez le canal avant de renvoyer.
 - Une redirection du NAS n'est jamais suivie (l'URL porte le jeton) : utilisez l'adresse et le port que Synology
@@ -64,7 +66,8 @@ passent alors en clair sur votre réseau.
    une **commande slash** ou un **bot**, avec cette URL comme adresse sortante.
 3. Copiez le **jeton** que Synology Chat affiche pour ce webhook (ou cette commande, ou ce bot) dans
    **Jeton(s) du webhook sortant** (jusqu'à 5, séparés par des espaces). Il est gardé par Gladys dans sa base,
-   jamais réaffiché, jamais envoyé nulle part.
+   jamais réaffiché, jamais envoyé nulle part par l'intégration. Les messages tapés dans le chat (et ce jeton,
+   qui les accompagne) passent par la passerelle Gladys Plus avant d'arriver à votre Gladys.
 4. Dans une scène, choisissez le déclencheur **Commande Synology Chat reçue**.
 
 Le déclencheur peut filtrer sur la **commande** (le message sans le mot déclencheur, espaces regroupés), le
@@ -79,7 +82,9 @@ Sécurité et limites :
   saisi, **toutes** sont ignorées. Le jeton n'est jamais lu dans l'URL.
 - Gladys ne répond **jamais** d'elle-même dans le chat : le webhook répond vide, et rien n'est envoyé en réaction
   à un message reçu. Si une scène lancée par une commande envoie un message qui commence par le mot déclencheur,
-  ce message, s'il revient dans la minute par le webhook sortant, est reconnu et ignoré (pas de boucle).
+  ce message, s'il revient dans la minute par le webhook sortant **avec exactement le même texte**, est reconnu
+  et ignoré. Si Synology Chat modifiait le texte (liens, caractères spéciaux), seule la limite de 20 requêtes par
+  minute freinerait la boucle : choisissez un mot déclencheur que les réponses de vos scènes ne reprennent pas.
 - 20 requêtes par minute au plus ; un même message (`post_id`) n'est traité qu'une fois tant que l'intégration
   tourne ; un message daté de plus de 10 minutes d'écart avec l'horloge de Gladys est ignoré.
 - Les messages à boutons des bots (actions interactives) ne sont pas lus.

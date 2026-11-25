@@ -31,7 +31,9 @@ Sending rules:
   leave within 15 seconds is dropped ("Nothing sent").
 - When the NAS answers HTTP 429 or 5xx, no message is sent for 1 minute, then 2, 4… up to 1 hour when it happens
   again (longer when the NAS asks for it with `Retry-After`, 6 hours at most). This pause is kept in `/data` and
-  survives a restart. A message accepted resets it.
+  survives a restart; the test button waits for it too. A message accepted resets it, and a new URL or a new
+  fingerprint lifts it (it was the previous target's). After a 5xx the publication is not confirmed: a proxy
+  (502, 504) may answer so after the message was posted.
 - The integration never sends a message twice. When the NAS does not answer after receiving the request, the
   scene action fails with "Message sent, without confirmation": look at the channel before sending it again.
 - A redirection of the NAS is never followed (the URL holds the token): use the address and port Synology Chat
@@ -63,7 +65,9 @@ network in clear.
 2. In Synology Chat > **Integration**, create an **outgoing webhook** (a channel and/or trigger words), a **slash
    command** or a **bot**, with this URL as its outgoing URL.
 3. Copy the **token** Synology Chat shows for this webhook (or command, or bot) in **Outgoing webhook token(s)**
-   (up to 5, separated by spaces). It is kept by Gladys in its database, never shown again, never sent anywhere.
+   (up to 5, separated by spaces). It is kept by Gladys in its database, never shown again, never sent anywhere
+   by the integration. The messages typed in the chat (and this token, which comes with them) go through the
+   Gladys Plus gateway before they reach your Gladys.
 4. In a scene, pick the trigger **Synology Chat command received**.
 
 The trigger can filter on the **command** (the message without the trigger word, spaces collapsed), the
@@ -78,7 +82,9 @@ Security and limits:
   request is ignored. The token is never read from the URL.
 - Gladys **never** answers in the chat by itself: the webhook answers empty, and nothing is sent in reaction to
   a received message. When a scene started by a command sends a message that starts with the trigger word, that
-  message, if it comes back within a minute through the outgoing webhook, is recognised and ignored (no loop).
+  message, if it comes back within a minute through the outgoing webhook **with exactly the same text**, is
+  recognised and ignored. Were Synology Chat to change the text (links, special characters), only the limit of
+  20 requests a minute would slow the loop: pick a trigger word the answers of your scenes do not repeat.
 - At most 20 requests a minute; the same message (`post_id`) is handled once while the integration runs; a
   message dated more than 10 minutes away from the clock of Gladys is ignored.
 - Bot messages with buttons (interactive actions) are not read.

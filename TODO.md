@@ -31,7 +31,9 @@ to date at the end of every milestone.
     revoked token, and whether a rate limit exists (shown as "refused (code N)"
     for now, never taken for a refused token);
   - whether a message posted by the incoming webhook can fire an outgoing
-    webhook of the same channel (the echo guard covers one minute).
+    webhook of the same channel, and with which text: the echo guard needs
+    the exact text back within a minute (60 messages remembered); otherwise
+    only the limit of 20 requests a minute slows a loop (said in the docs).
 
 ## Decisions
 
@@ -65,6 +67,9 @@ to date at the end of every milestone.
   still applies.
 - **Message length** capped at 2000 characters (the limit of Synology Chat is
   not documented); `file_url` (the NAS downloads a file) left out of v1.
+- **Never awaited on the path of a message** (r1): the write of /data and
+  `setConnectionStatus` (the queue and the ack never wait for them; a pause is
+  held in memory first). A new URL or fingerprint lifts the pause.
 - **Mutants** (`scripts/mutants.json`): every one killed. The pause check at
   enqueue (`send`) has no mutant: the same check runs in `pump` before every
   request (an equivalent mutant), kept for an immediate answer.

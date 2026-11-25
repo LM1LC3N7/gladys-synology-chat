@@ -57,7 +57,8 @@ export const MAX_INBOUND_BYTES = 16 * 1024;
 export const INBOUND_PER_MINUTE = 20;
 export const SEEN_POSTS = 500;
 export const ECHO_WINDOW = 60_000;
-export const ECHO_KEEP = 20;
+// At least what the queue can send in ECHO_WINDOW (one a second).
+export const ECHO_KEEP = 60;
 /** A message dated further than this from the clock of Gladys is ignored. */
 export const INBOUND_MAX_SKEW = 10 * 60_000;
 /** At most one warning per this delay for refused inbound requests. */

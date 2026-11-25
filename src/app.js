@@ -191,15 +191,18 @@ export class ChatApp {
     this.clearConfigTimer();
     this.configDelay = CONFIG_RETRY_MIN;
     const previous = this.config;
+    const wasRead = this.configRead;
     this.config = normalizeConfig(raw);
     this.configRead = true;
     this.generation += 1;
-    // Another URL or fingerprint: the last failure was the previous one's.
+    // Another URL or fingerprint: the last failure and the pause were the
+    // previous target's (never at the first read: a pause kept in /data stays).
     if (
       JSON.stringify([previous.incoming, previous.fingerprint, previous.allowHttp]) !==
       JSON.stringify([this.config.incoming, this.config.fingerprint, this.config.allowHttp])
     ) {
       this.lastError = undefined;
+      if (wasRead) this.liftPause();
     }
     const generation = this.generation;
     await this.refreshWebhooks();
@@ -395,24 +398,24 @@ export class ChatApp {
               reason,
               ...(err?.fingerprint ? { fingerprint: err.fingerprint } : {}),
             };
-      if (reason !== 'config_changed') await this.recordFailure(config, failure);
+      if (reason !== 'config_changed') this.recordFailure(config, failure);
       throw new SendFailure(failure);
     }
     const meaning = interpretAnswer(answer, this.now());
     if (meaning.kind === 'ok') {
-      await this.recordSuccess(config);
+      this.recordSuccess(config);
       return;
     }
     let failure;
     if (meaning.kind === 'pause') {
-      const ms = await this.startPause(meaning.retryAfter);
+      const ms = this.startPause(meaning.retryAfter);
       failure = { kind: 'pause_started', status: answer.status, minutes: minutesOf(ms) };
     } else if (meaning.kind === 'unconfirmed') {
       failure = { kind: 'unconfirmed', reason: 'unconfirmed' };
     } else {
       failure = { ...meaning };
     }
-    await this.recordFailure(config, failure);
+    this.recordFailure(config, failure);
     throw new SendFailure(failure);
   }
 
@@ -437,33 +440,54 @@ export class ChatApp {
     }
   }
 
-  async recordFailure(config, failure) {
+  /**
+   * The outcome of a message: kept for the status, which is published (and
+   * /data written) WITHOUT waiting: neither may hold the queue nor the ack of
+   * the message (Gladys gives up the action at 30 s).
+   */
+  recordFailure(config, failure) {
     if (config !== this.config) return;
     this.lastError = failure;
     this.logger.warn(
       `Message not confirmed: ${failure.kind} ${failure.reason ?? failure.status ?? failure.code ?? ''}`.trim(),
     );
-    await this.updateStatus();
+    this.publishStatus();
   }
 
-  async recordSuccess(config) {
+  recordSuccess(config) {
     if (this.pauseLevel !== 0) {
       this.pauseLevel = 0;
-      await this.saveState();
+      this.saveState();
     }
     if (config !== this.config) return;
     this.lastError = undefined;
-    await this.updateStatus();
+    this.publishStatus();
+  }
+
+  /** updateStatus without waiting (errors already handled there). */
+  publishStatus() {
+    this.updateStatus().catch(() => {});
+  }
+
+  /** A new target: the pause of the previous one no longer applies. */
+  liftPause() {
+    if (this.pauseUntil === undefined && this.pauseLevel === 0) return;
+    this.pauseUntil = undefined;
+    this.pauseLevel = 0;
+    if (this.pauseTimer !== undefined) this.timers.clearTimeout(this.pauseTimer);
+    this.pauseTimer = undefined;
+    this.saveState();
   }
 
   /** A 429/5xx: every send paused, kept in /data. Resolves the length (ms). */
-  async startPause(retryAfter) {
+  startPause(retryAfter) {
     this.pauseLevel = Math.min(this.pauseLevel + 1, 20);
     const doubled = Math.min(PAUSE_MIN * 2 ** (this.pauseLevel - 1), PAUSE_MAX);
     const ms = Math.min(Math.max(doubled, retryAfter ?? 0), RETRY_AFTER_MAX);
     this.pauseUntil = this.monotonic() + ms;
     this.armPauseTimer(ms);
-    await this.saveState();
+    // Kept for a restart, never awaited: a slow /data never holds the queue.
+    this.saveState();
     return ms;
   }
 
@@ -473,7 +497,9 @@ export class ChatApp {
     if (this.pauseTimer !== undefined) this.timers.clearTimeout(this.pauseTimer);
     this.pauseTimer = this.timers.setTimeout(() => {
       this.pauseTimer = undefined;
-      this.updateStatus().catch(() => {});
+      // Sending is possible again: the 5xx that started the pause is over.
+      if (this.lastError?.kind === 'pause_started') this.lastError = undefined;
+      this.publishStatus();
     }, ms);
   }
 
@@ -514,7 +540,7 @@ export class ChatApp {
       } else if (err instanceof SendFailure) result = err.text;
       else result = T.failure({ kind: 'not_sent', reason: 'unreachable' });
     }
-    await this.updateStatus();
+    this.publishStatus();
     return T.join(result, inbound);
   }
 

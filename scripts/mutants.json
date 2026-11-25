@@ -136,5 +136,65 @@
     "file": "src/app.js",
     "from": "for (const job of this.queue.splice(0)) {",
     "to": "for (const job of []) {"
+  },
+  {
+    "name": "pause: the /data write is awaited before the ack",
+    "file": "src/app.js",
+    "from": "      const ms = this.startPause(meaning.retryAfter);",
+    "to": "      const ms = this.startPause(meaning.retryAfter);\n      await this.saveState();"
+  },
+  {
+    "name": "success: the /data write is awaited before the ack",
+    "file": "src/app.js",
+    "from": "    if (meaning.kind === 'ok') {\n      this.recordSuccess(config);",
+    "to": "    if (meaning.kind === 'ok') {\n      this.recordSuccess(config);\n      await this.store.save({});"
+  },
+  {
+    "name": "status: the ack waits for setConnectionStatus",
+    "file": "src/app.js",
+    "from": "    this.recordFailure(config, failure);\n    throw new SendFailure(failure);",
+    "to": "    this.lastError = failure;\n    await this.updateStatus();\n    throw new SendFailure(failure);"
+  },
+  {
+    "name": "deadline: the queue waits 28 s",
+    "file": "src/constants.js",
+    "from": "export const SCENE_DEADLINE = 15_000;",
+    "to": "export const SCENE_DEADLINE = 28_000;"
+  },
+  {
+    "name": "deadline: the request waits 40 s",
+    "file": "src/constants.js",
+    "from": "export const REQUEST_TIMEOUT = 10_000;",
+    "to": "export const REQUEST_TIMEOUT = 40_000;"
+  },
+  {
+    "name": "send: the blocker is not checked again before the request",
+    "file": "src/app.js",
+    "from": "    const config = this.config;\n    const blocker = sendBlocker(config);\n    if (blocker) throw",
+    "to": "    const config = this.config;\n    const blocker = '';\n    if (blocker) throw"
+  },
+  {
+    "name": "inbound: cut in code points",
+    "file": "src/inbound.js",
+    "from": "  if (clean.length <= max) return clean;",
+    "to": "  return [...clean].slice(0, max).join('');"
+  },
+  {
+    "name": "echo: only 20 messages remembered",
+    "file": "src/constants.js",
+    "from": "export const ECHO_KEEP = 60;",
+    "to": "export const ECHO_KEEP = 20;"
+  },
+  {
+    "name": "pause: not lifted by a new URL",
+    "file": "src/app.js",
+    "from": "      if (wasRead) this.liftPause();",
+    "to": "      ;"
+  },
+  {
+    "name": "pause: its end keeps the 5xx failure",
+    "file": "src/app.js",
+    "from": "      if (this.lastError?.kind === 'pause_started') this.lastError = undefined;",
+    "to": ";"
   }
 ]

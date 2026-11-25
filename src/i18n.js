@@ -146,8 +146,8 @@ export const T = {
     }
     if (f.kind === 'pause_started') {
       return {
-        en: `The NAS answered HTTP ${f.status}: message not posted, sending paused for ${f.minutes} min.`,
-        fr: `Le NAS a répondu HTTP ${f.status} : message non publié, envoi suspendu pendant ${f.minutes} min.`,
+        en: `The NAS answered HTTP ${f.status}: publication not confirmed, sending paused for ${f.minutes} min.`,
+        fr: `Le NAS a répondu HTTP ${f.status} : publication non confirmée, envoi suspendu pendant ${f.minutes} min.`,
       };
     }
     if (f.kind === 'refused') {

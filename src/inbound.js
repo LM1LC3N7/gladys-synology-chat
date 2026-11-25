@@ -69,7 +69,10 @@ export function oneLine(value, max) {
   if (typeof value !== 'string') return null;
   const clean = value.replace(CONTROL, ' ').replace(/\s+/g, ' ').trim();
   if (!clean) return null;
-  return [...clean].slice(0, max).join('');
+  // Cut in UTF-16 units (what Gladys counts), never inside a surrogate pair.
+  if (clean.length <= max) return clean;
+  const cut = clean.slice(0, max);
+  return /[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut;
 }
 
 /** A positive integer id, or null. */

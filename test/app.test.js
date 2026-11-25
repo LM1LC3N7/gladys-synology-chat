@@ -22,7 +22,15 @@ import {
 } from './helpers/app.js';
 import { createMemoryStore } from '../src/store.js';
 import { settle, testClock } from './kit/index.mjs';
-import { PAUSE_MIN, QUEUE_MAX, SCENE_DEADLINE, SEND_GAP } from '../src/constants.js';
+import { readFileSync } from 'node:fs';
+import {
+  PAUSE_MIN,
+  QUEUE_MAX,
+  REQUEST_TIMEOUT,
+  SCENE_DEADLINE,
+  SEND_GAP,
+  TEST_DEADLINE,
+} from '../src/constants.js';
 
 const statusText = (fake) => JSON.stringify(fake.connectionStatus);
 
@@ -256,7 +264,7 @@ test('a 503 pauses every send, kept in /data across a restart, doubled, cleared 
   transport.answers.push({ status: 503, headers: {}, body: Buffer.alloc(0) });
   const { fake } = await connected({ store, clock, transport });
   const first = await within(scene(fake, 'a'));
-  assert.match(first.error, /HTTP 503: message not posted, sending paused for 1 min/);
+  assert.match(first.error, /HTTP 503: publication not confirmed, sending paused for 1 min/);
   await clock.advance(SEND_GAP);
   const second = await within(scene(fake, 'b'));
   assert.match(second.error, /^Nothing sent: the NAS asked to slow down/);
@@ -537,12 +545,13 @@ test('the end of a pause refreshes the status; a 503 after stop() arms nothing',
   transport.answers.push({ status: 503, headers: {}, body: Buffer.alloc(0) });
   const { fake, clock, app } = await connected({ transport });
   await within(scene(fake, 'a'));
+  await settle();
   assert.equal(fake.connectionStatus.connected, false);
   await clock.advance(PAUSE_MIN + 1);
   await settle();
-  assert.match(fake.connectionStatus.message.en, /HTTP 503/);
-  // Still the last failure, but no longer the pause.
-  assert.doesNotMatch(fake.connectionStatus.message.en, /no message sent for/);
+  // Sending is possible again: ready, the 5xx is over.
+  assert.equal(fake.connectionStatus.connected, true);
+  assert.match(fake.connectionStatus.message.en, /Ready to send/);
 
   let release;
   transport.answers.push(() => new Promise((resolve) => (release = resolve)));
@@ -604,4 +613,103 @@ test('the configuration changed during the TLS handshake: nothing written to the
   assert.match(ack.error, /Nothing sent: the configuration changed/);
   assert.deepEqual(transport.sent, []);
   assert.equal(fake.connectionStatus.connected, true, 'not a failure of the new URL');
+});
+
+// --- r1 ----------------------------------------------------------------------------
+
+test('a write of /data that never returns never holds the queue (503, then success)', async () => {
+  const store = createMemoryStore();
+  store.save = () => new Promise(() => {});
+  const transport = fakeTransport();
+  transport.answers.push({ status: 503, headers: {}, body: Buffer.alloc(0) });
+  const { fake, clock } = await connected({ store, transport });
+  assert.match((await within(scene(fake, 'a'))).error, /HTTP 503/);
+  await clock.advance(PAUSE_MIN + 1);
+  // The success after a pause writes /data too (level back to 0): never awaited.
+  assert.equal((await within(scene(fake, 'b'))).success, true);
+  await clock.advance(SEND_GAP);
+  assert.equal((await within(scene(fake, 'c'))).success, true);
+  assert.deepEqual(transport.sent, ['a', 'b', 'c']);
+});
+
+test('a status Gladys never acknowledges does not hold the ack of a message', async (t) => {
+  const { fake, gladys, clock, transport } = await connected();
+  t.mock.method(gladys, 'setConnectionStatus', () => new Promise(() => {}));
+  assert.equal((await within(scene(fake, 'a'), 1000)).success, true);
+  await clock.advance(SEND_GAP);
+  const button = await within(drive(clock, fake.action('test_message', {})), 2000);
+  assert.equal(button.success, true);
+  // A failure changes the status: its ack does not wait for it either.
+  transport.answers.push({ status: 404, headers: {}, body: Buffer.alloc(0) });
+  await clock.advance(SEND_GAP);
+  assert.match((await within(scene(fake, 'b'), 1000)).error, /HTTP 404/);
+});
+
+test('waiting plus the request stays under the delay Gladys grants the action and the button', () => {
+  const manifest = JSON.parse(
+    readFileSync(new URL('../gladys-assistant-integration.json', import.meta.url), 'utf8'),
+  );
+  const margin = 3000;
+  const send = manifest.scene_actions.find((a) => a.key === 'send_message');
+  const button = manifest.actions.find((a) => a.key === 'test_message');
+  assert.ok(SCENE_DEADLINE + REQUEST_TIMEOUT + margin <= send.timeout_seconds * 1000);
+  assert.ok(TEST_DEADLINE + REQUEST_TIMEOUT + margin <= button.timeout_seconds * 1000);
+});
+
+test('a message queued before an http URL was saved without the option is never sent', async () => {
+  const transport = fakeTransport();
+  let release;
+  transport.answers.push(() => new Promise((resolve) => (release = resolve)));
+  const { fake, clock } = await connected({ transport });
+  const a = scene(fake, 'a');
+  const b = scene(fake, 'b');
+  await settle();
+  await within(fake.configUpdated({ incoming_url: INCOMING.replace('https:', 'http:') }));
+  release({ status: 200, headers: {}, body: Buffer.from('{"success":true}') });
+  assert.equal((await within(a)).success, true);
+  await clock.advance(SEND_GAP);
+  assert.match((await within(b)).error, /^Nothing sent: The URL starts with http:\/\//);
+  assert.deepEqual(transport.sent, ['a']);
+});
+
+test('a long command is cut in UTF-16 units under the limit of Gladys, never inside a pair', async () => {
+  const { fake } = await connected();
+  await within(fake.webhook('chat', form({ text: `gladys ${'😀'.repeat(700)}`, post_id: '77' })));
+  assert.equal(fake.sceneEvents.length, 1);
+  const { text, command } = fake.sceneEvents[0].data;
+  assert.ok(text.length <= 1000 && text.length >= 998, String(text.length));
+  assert.doesNotMatch(text, /[\uD800-\uDBFF]$/);
+  assert.ok(command.length < text.length);
+});
+
+test('a new URL lifts the pause; the button waits for it otherwise', async () => {
+  const store = createMemoryStore();
+  const transport = fakeTransport();
+  transport.answers.push({ status: 502, headers: {}, body: Buffer.alloc(0) });
+  const { fake, clock } = await connected({ store, transport });
+  await within(scene(fake, 'a'));
+  await clock.advance(SEND_GAP);
+  const button = await within(fake.action('test_message', {}));
+  assert.match(button.data.message.en, /slow down/);
+  await within(
+    fake.configUpdated({
+      incoming_url: INCOMING.replace('nas.local', 'proxy.local'),
+      certificate_fingerprint: FP,
+    }),
+  );
+  await settle();
+  assert.equal(store.data.pauseLevel, 0);
+  assert.equal(fake.connectionStatus.connected, true);
+  assert.equal((await within(scene(fake, 'b'))).success, true);
+});
+
+test('the echo guard remembers every message the queue can send in a minute', async () => {
+  const { fake, clock } = await connected();
+  for (let i = 0; i < 40; i += 1) {
+    await drive(clock, scene(fake, `gladys reply ${i}`));
+  }
+  await within(
+    fake.webhook('chat', form({ text: 'gladys reply 0', post_id: '500', timestamp: '' })),
+  );
+  assert.equal(fake.sceneEvents.length, 0);
 });
