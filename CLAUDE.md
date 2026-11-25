@@ -5,67 +5,71 @@ contributors.
 
 ## What this is
 
-A Gladys Assistant **external integration**: a Node.js service (Node 22+, ESM,
-no build step) that runs in its own sandboxed Docker container and talks to
-Gladys through
-[`@gladysassistant/integration-sdk`](https://github.com/GladysAssistant/integration-sdk-js),
-its only runtime dependency. It started from the official JavaScript template.
+A Gladys Assistant **external integration** for Synology Chat: scenes post
+messages through the incoming webhook of the NAS, and a message typed in the
+chat (outgoing webhook, slash command, bot) starts a scene through the Gladys
+Plus webhooks. A Node.js service (Node 22+, ESM, no build step) that runs in
+its own sandboxed Docker container and talks to Gladys through
+[`@gladysassistant/integration-sdk`](https://github.com/GladysAssistant/integration-sdk-js)
+(v0.16), its only runtime dependency (the HTTP client is `node:https`). The
+protocol follows the official help "Using Integration in Synology Chat".
+Decisions are recorded in `TODO.md`.
 
 ## Commands
 
 ```bash
 npm install
-npm test                                  # node --test, the built-in runner
-node --test test/devices.test.js          # one file
-node --test --test-name-pattern "plug"    # tests whose name matches
+npm test                                  # node --test --test-timeout=60000
+node --test test/app.test.js              # one file
 npm run lint                              # ESLint
 npm run format:check                      # Prettier, as the CI runs it
-npm run format                            # Prettier, fix in place
+npm run mutants                           # mutation run (scripts/mutants.json), under memcap
+npm run cover                             # regenerates cover.png
 npx github:GladysAssistant/integration-store .   # store admission checks
 ```
 
 The CI (`.github/workflows/ci.yml`) runs `format:check`, `lint` and `test` on
-Node 22 and 24, and builds the Docker image: run the three commands before
-pushing.
+Node 22 and 24, and builds the Docker image.
 
 ## Architecture
 
 ```
-index.js                          SDK wiring only: handlers registered before connect()
-src/devices/index.js              registry of the device blueprints + dispatch helpers
-src/devices/<type>.js             one device type per file (buildDevice, onPoll, onSetValue...)
-src/scenes.js                     scene action handlers (manifest `scene_actions`)
-src/widgets.js                    dashboard widget handlers (manifest `widgets`)
+index.js                          SDK wiring only (src/handlers.js registers before connect())
+src/handlers.js                   every SDK handler -> ChatApp (shared with the tests)
+src/app.js                        send queue, pause, certificate check, inbound events, status
+src/http.js                       one POST to the NAS: certificate checked before any byte, bounded
+src/synology.js                   message text, form body, answers of the NAS (pure)
+src/inbound.js                    what Synology Chat posts -> scene event, token check (pure)
+src/store.js                      /data/synology-chat-state.json (the pause only)
+src/i18n.js                       every text the user reads (en, fr)
+src/constants.js                  frozen keys, limits, timings
 src/config.js                     DEFAULT_CONFIG (mirrors the manifest defaults) + normalization
-src/weather.js                    example driver (Open-Meteo)
-gladys-assistant-integration.json manifest: name, config_schema, actions, image...
+gladys-assistant-integration.json manifest: config_schema, action, webhook, scene trigger and action
 docs/en.md, docs/fr.md            user documentation, re-hosted by Gladys (mandatory)
-test/                             node --test, against the SDK's fake Gladys (integration-sdk/testing)
+test/                             node --test, fake Gladys, fake transport, local HTTPS servers (test/kit/)
+scripts/mutants.mjs               mutation run of the guards
 .github/scripts/release.mjs       release helpers (manifest bump, changelog), tested in test/
 ```
 
 ## Rules
 
-- **External ids are forever.** Build them with
-  `gladys.externalIds(type, platformId)`, `platformId` being the unique id the
-  platform gives the device (serial, cloud id, MAC), never a label. Gladys keys
-  devices, their history, scenes and dashboards on them: changing one creates a
-  new device and orphans the old one. The same goes for every key users store:
-  manifest `config_schema`, `actions`, widget and scene keys, feature keys.
-- **Every feature carries `name`, `min`, `max`, `read_only` and
-  `has_feedback`**, even where they mean nothing: Gladys stores them NOT NULL.
-  `min`/`max` are `0`/`1` for a binary feature, the real range for a numeric
-  one, `0`/`0` for a feature without a range (text, image...). A missing one
-  can pass the publication on a core that does not check it, then fail when
-  the user clicks "Add" (HTTP 422 `t_device_feature.min cannot be null`). The
-  SDK's fake Gladys refuses it on publication, and `test/devices.test.js`
-  checks them.
+- **Keys are forever.** The manifest keys users store (`config_schema`,
+  the action, the webhook `chat`, the scene trigger `command_received` and its
+  variables, the scene action `send_message`) are never renamed.
+- **Secrets.** The incoming webhook URL (its token) and the outgoing tokens
+  never go to a log, a status, an error message nor `/data`. A test checks it.
+- **Never a reply.** Nothing is ever sent in reaction to a received message;
+  the webhook stays `fire_and_forget`.
+- **Certificate.** Never `rejectUnauthorized: false` outside the options of one
+  request whose `checkPeer` decides before any byte is written.
+- **Tests fail, never hang**: every wait is bounded (`within`, `drive`), and
+  nothing is armed after `stop()`.
 - **The container rootfs is read-only.** Write only under `/data`, the one
   writable volume. Never log tokens, passwords or API keys.
-- **Versions belong to the Release workflow** (Actions → Release). Never edit
-  `version` in `package.json` or in the manifest, nor the `docker_image` tag,
-  by hand — except on the README's hand-pushed tag path, which bumps all three
-  together before tagging. `test/manifest.test.js` checks they agree.
+  Never write "encrypted" about a stored value: Gladys keeps it in clear in
+  its database.
+- **Versions belong to the Release workflow** (Actions → Release), except the
+  first one (0.1.0, set by hand). The User-Agent reads `package.json`. `test/manifest.test.js` checks they agree.
 - **Changelog.** Every user-visible change adds a line under `## [Unreleased]`
   in `CHANGELOG.md` (`### Added`, `Changed`, `Fixed`, `Removed`, `Security`).
   Never write a version heading: the Release workflow moves the section, and it

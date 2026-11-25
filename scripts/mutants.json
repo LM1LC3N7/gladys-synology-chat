@@ -1,0 +1,140 @@
+[
+  {
+    "name": "certificate: a typed fingerprint is not compared",
+    "file": "src/app.js",
+    "from": "if (fingerprint !== config.fingerprint) {",
+    "to": "if (false) {"
+  },
+  {
+    "name": "certificate: a self-signed one passes without a fingerprint",
+    "file": "src/app.js",
+    "from": "if (!authorized) {",
+    "to": "if (false) {"
+  },
+  {
+    "name": "certificate: the check is not tied to its configuration",
+    "file": "src/app.js",
+    "from": "if (config !== this.config || this.closed) {",
+    "to": "if (this.closed) {"
+  },
+  {
+    "name": "transport: an answer before the request is accepted",
+    "file": "src/http.js",
+    "from": "if (early) throw new ChatError(CODES.BAD_ANSWER, 'Answer before the request');",
+    "to": ";"
+  },
+  {
+    "name": "transport: the answer size is not capped",
+    "file": "src/http.js",
+    "from": "if (size > maxBytes) {",
+    "to": "if (false) {"
+  },
+  {
+    "name": "inbound: any token matches",
+    "file": "src/inbound.js",
+    "from": "if (timingSafeEqual(g, digest(token))) found = true;",
+    "to": "found = true;"
+  },
+  {
+    "name": "inbound: a stale message is accepted",
+    "file": "src/inbound.js",
+    "from": "if (at !== null && Math.abs(wallNow - at) > maxSkew)",
+    "to": "if (false)"
+  },
+  {
+    "name": "inbound: an oversized body is read",
+    "file": "src/inbound.js",
+    "from": "if (Buffer.byteLength(body, 'utf8') > MAX_INBOUND_BYTES) return null;",
+    "to": ";"
+  },
+  {
+    "name": "inbound: duplicates are not dropped",
+    "file": "src/app.js",
+    "from": "if (this.seenPosts.includes(result.postId)) return undefined;",
+    "to": ";"
+  },
+  {
+    "name": "inbound: echoes are not dropped",
+    "file": "src/app.js",
+    "from": "if (this.echoes.some((e) => e.key === result.text)) {",
+    "to": "if (false) {"
+  },
+  {
+    "name": "inbound: no rate limit",
+    "file": "src/app.js",
+    "from": "if (this.inboundTimes.length >= INBOUND_PER_MINUTE) {",
+    "to": "if (false) {"
+  },
+  {
+    "name": "send: the pause is not checked before the request",
+    "file": "src/app.js",
+    "from": "      if (this.isPaused(mono)) {\n        const job = this.queue.shift();",
+    "to": "      if (false) {\n        const job = this.queue.shift();"
+  },
+  {
+    "name": "send: the queue is not bounded",
+    "file": "src/app.js",
+    "from": "if (this.queue.length >= QUEUE_MAX) return",
+    "to": "if (false) return"
+  },
+  {
+    "name": "send: no gap between two messages",
+    "file": "src/app.js",
+    "from": "const wait = this.lastStart === undefined ? 0 : this.lastStart + SEND_GAP - mono;",
+    "to": "const wait = 0;"
+  },
+  {
+    "name": "send: a message past its deadline stays queued",
+    "file": "src/app.js",
+    "from": "this.queue.splice(index, 1);\n        reject(notSent('deadline'));",
+    "to": "reject(notSent('deadline'));"
+  },
+  {
+    "name": "send: http allowed without the option",
+    "file": "src/config.js",
+    "from": "if (config.incoming.scheme === 'http' && !config.allowHttp) return 'http_refused';",
+    "to": ";"
+  },
+  {
+    "name": "config: multicast accepted",
+    "file": "src/config.js",
+    "from": "(a >= 224 && a <= 239)",
+    "to": "false"
+  },
+  {
+    "name": "pause: no longer than 1 h even with Retry-After",
+    "file": "src/app.js",
+    "from": "const ms = Math.min(Math.max(doubled, retryAfter ?? 0), RETRY_AFTER_MAX);",
+    "to": "const ms = doubled;"
+  },
+  {
+    "name": "pause: a pause in /data further than 6 h is believed",
+    "file": "src/app.js",
+    "from": "pauseUntil > wall && pauseUntil - wall <= RETRY_AFTER_MAX",
+    "to": "pauseUntil > wall"
+  },
+  {
+    "name": "pause: a timer armed after stop()",
+    "file": "src/app.js",
+    "from": "  armPauseTimer(ms) {\n    if (this.closed) return;",
+    "to": "  armPauseTimer(ms) {"
+  },
+  {
+    "name": "store: /data unreadable is overwritten",
+    "file": "src/app.js",
+    "from": "if (!this.storeOk) return false;",
+    "to": ";"
+  },
+  {
+    "name": "status: a refused status is never sent again",
+    "file": "src/app.js",
+    "from": "if (this.lastStatus === key) this.lastStatus = undefined;",
+    "to": ";"
+  },
+  {
+    "name": "stop: the waiting messages are kept",
+    "file": "src/app.js",
+    "from": "for (const job of this.queue.splice(0)) {",
+    "to": "for (const job of []) {"
+  }
+]
