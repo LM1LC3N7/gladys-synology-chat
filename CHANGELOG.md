@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-25
+
 ### Added
 
 - Scene action "Send a Synology Chat message": posts to the incoming webhook of
@@ -21,3 +23,6 @@ the notes of the version's GitHub Release.
   webhooks: outgoing webhook, slash command or bot, token checked, never a reply
   in the chat, duplicates, echoes and floods dropped.
 - "Send a test message" button; documentation in English and French.
+
+[Unreleased]: https://github.com/LM1LC3N7/gladys-synology-chat/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/LM1LC3N7/gladys-synology-chat/releases/tag/v0.1.1
