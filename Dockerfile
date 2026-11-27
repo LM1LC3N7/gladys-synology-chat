@@ -28,7 +28,7 @@ COPY gladys-assistant-integration.json LICENSE THIRD_PARTY_NOTICES.md ./
 # The only writable location allowed at runtime. Docker creates a new volume
 # with the owner of the image's /data, so it must belong to `node`, and before
 # VOLUME: changes made to /data after it are discarded. Without this, /data is
-# root-owned and the integration cannot write to it.
+# root-owned and the integration cannot keep its pause there.
 ENV NODE_ENV=production
 RUN mkdir -p /data && chown node:node /data
 VOLUME ["/data"]
